@@ -1,0 +1,76 @@
+version: '3'
+networks:
+  spark-iceberg-hdfs-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.199.0.0/16
+          gateway: 172.199.0.1
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
+services:
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    restart: always
+    ports:
+      - "28811:28811"  # HDFS 相关通信端口
+      - "28812:9870"   # NameNode Web UI 端口
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=test
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:28811
+    networks:
+      spark-iceberg-hdfs-network:
+        ipv4_address: 172.199.0.2
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    restart: always
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:28811
+    depends_on:
+      - namenode
+    networks:
+      spark-iceberg-hdfs-network:
+        ipv4_address: 172.199.0.3
+  spark-master:
+    image: bitnami/spark:3
+    container_name: spark-master
+    ports:
+      - "28813:8080"  # Spark Master Web UI 端口
+      - "28814:7077"  # Spark Worker 与 Master 通信端口
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_DAEMON_JAVA_OPTS=-Dspark.hadoop.fs.defaultFS=hdfs://namenode:28811
+    depends_on:
+      - namenode
+    networks:
+      spark-iceberg-hdfs-network:
+        ipv4_address: 172.199.0.4
+  spark-worker:
+    image: bitnami/spark:3
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:28814
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_DAEMON_JAVA_OPTS=-Dspark.hadoop.fs.defaultFS=hdfs://namenode:28811
+    depends_on:
+      - spark-master
+    networks:
+      spark-iceberg-hdfs-network:
+        ipv4_address: 172.199.0.5
